@@ -1,0 +1,17 @@
+{
+  "name": "fc27-kapisma",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FC27 Kapışma — iki oyunculu açık artırma ve maç",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
