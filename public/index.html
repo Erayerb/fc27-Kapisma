@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FC27 Kapışma</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f3f5f9;--panel:#fff;--text:#111827;--mute:#6b7280;--line:#e5e7eb;--a:#2563eb;--b:#ea580c;--ok:#16a34a;--btn:#111827;--btnt:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0f1a;--panel:#151b2b;--text:#f1f5f9;--mute:#94a3b8;--line:#263148;--btn:#f1f5f9;--btnt:#0b0f1a}}
+:root[data-theme="dark"]{--bg:#0b0f1a;--panel:#151b2b;--text:#f1f5f9;--mute:#94a3b8;--line:#263148;--btn:#f1f5f9;--btnt:#0b0f1a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+#app{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 8px}
+.mute{color:var(--mute);font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:240px}
+input,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:15px}
+label{font-size:13px;color:var(--mute);display:block;margin:8px 0 3px}
+button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;font-size:15px;font-weight:600;background:var(--btn);color:var(--btnt)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.team{border-top:4px solid var(--c)}.team.on{box-shadow:0 0 0 2px var(--c)}
+.big{font-size:26px;font-weight:800}
+.card{width:130px;border-radius:14px;padding:10px;text-align:center;color:#1b1400;background:linear-gradient(160deg,#f7d56a,#c99a1f);border:2px solid #fff3;margin:auto}
+.card.s{background:linear-gradient(160deg,#e5e9ef,#9aa5b5);color:#10151c}.card.br{background:linear-gradient(160deg,#e0a56f,#9a5f2c);color:#1d1005}
+.card .o{font-size:34px;font-weight:900;line-height:1}.card .p{font-weight:700;font-size:13px}.card .n{font-size:14px;font-weight:700;margin-top:6px}
+.mini{display:inline-flex;gap:6px;align-items:center;padding:4px 8px;border-radius:8px;background:var(--bg);border:1px solid var(--line);font-size:13px;margin:2px}
+.bids{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+.center{text-align:center}
+#log{height:260px;overflow:auto;font-size:14px}
+#log div{padding:5px 0;border-bottom:1px solid var(--line)}#log .mt{color:var(--mute)}#log .sys{font-weight:700}
+.goal{font-weight:800;color:var(--ok)}
+.score{font-size:44px;font-weight:900;text-align:center}
+.line{margin:6px 0}.line .l{font-size:11px;color:var(--mute);text-transform:uppercase}
+.rules ol{margin:6px 0 0;padding-left:20px;font-size:14px}.rules li{margin:5px 0}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:6px}
+.lobby{max-width:420px;margin:12vh auto 0;text-align:center}
+.lobby h1{font-size:34px;letter-spacing:.04em;margin:0 0 28px}
+.lobby .stack{display:flex;flex-direction:column;gap:14px}
+.lobby button{width:100%;padding:16px;font-size:18px;letter-spacing:.06em}
+.lobby .join{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.lobby .join button{margin-top:0}
+.lobby .code-row{display:flex;align-items:center;gap:8px;margin-top:12px;text-align:left}
+.lobby .code-row label{margin:0;white-space:nowrap;font-size:14px;font-weight:600;color:var(--text)}
+.lobby .code-row input{letter-spacing:.2em;text-transform:uppercase;text-align:center}
+.code{font-size:32px;font-weight:800;letter-spacing:.28em;font-variant-numeric:tabular-nums}
+.err{color:#dc2626;font-size:13px;margin-top:8px;min-height:1.2em}
+.you{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.wait-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px}
+.wait-dot.off{background:#ef4444}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const COL=["var(--a)","var(--b)"];
+const $=s=>document.querySelector(s);
+const e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const socket=io();
+let V=null,me=null,timer=null,matchKey='',logI=0,errMsg='';
+
+function saveSession(j){sessionStorage.setItem('fc27',JSON.stringify(j));me=j}
+function loadSession(){try{return JSON.parse(sessionStorage.getItem('fc27')||'null')}catch{return null}}
+function clearSession(){sessionStorage.removeItem('fc27');me=null}
+
+function cardHtml(p){const c=p.o>=88?'':p.o>=84?'s':'br';
+return `<div class="card ${c}"><div class="o">${p.o}</div><div class="p">${p.pos}</div><div class="n">${e(p.n)}</div></div>`}
+const mini=p=>`<span class="mini"><b>${p.o}</b>${p.pos} ${e(p.n)} <span class="mute">${p.paid}M</span></span>`;
+
+function landing(prefill){
+clearInterval(timer);
+const q=new URLSearchParams(location.search).get('room')||prefill||'';
+$('#app').innerHTML=`<div class="lobby">
+<h1>FC27 KAPIŞMA</h1>
+<div class="stack">
+<button onclick="createRoom()">ODA OLUŞTUR</button>
+<div class="join">
+<button onclick="joinRoom()">ODAYA KATIL</button>
+<div class="code-row"><label for="roomCode">Oda Kodu:</label>
+<input id="roomCode" maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="______" value="${e(q)}"></div>
+</div>
+</div>
+<div class="err" id="err">${e(errMsg)}</div>
+</div>`}
+
+function createRoom(){
+errMsg='';
+socket.emit('createRoom',{})}
+function joinRoom(){
+errMsg='';
+const code=($('#roomCode')?.value||'').replace(/\s+/g,'').trim().toUpperCase();
+if(!code){errMsg='Oda kodunu yaz.';if($('#err'))$('#err').textContent=errMsg;return}
+socket.emit('joinRoom',{code})}
+
+function leaveToLanding(){
+clearSession();V=null;errMsg='';landing()}
+
+socket.on('joined',j=>{saveSession(j);errMsg=''});
+socket.on('err',x=>{errMsg=x.message||'Hata';
+if(V){const el=$('#err');if(el)el.textContent=errMsg;else landing()}
+else{const el=$('#err');if(el)el.textContent=errMsg;else landing()}});
+socket.on('kicked',x=>{clearSession();errMsg=x.message||'Bağlantı kesildi';landing()});
+socket.on('state',s=>{V=s;paint()});
+socket.on('connect',()=>{
+const ses=loadSession();
+if(ses?.token)socket.emit('rejoin',{token:ses.token});
+else landing()});
+socket.on('disconnect',()=>{});
+
+function paint(){
+if(!V)return landing();
+if(V.phase==='lobby')return lobby();
+if(V.phase==='auction')return auction();
+if(V.phase==='formation')return formation();
+if(V.phase==='match')return match();
+if(V.phase==='end')return match(true);
+landing()}
+
+function oppOffline(){const o=V.players[1-V.seat];return o&&!o.connected?`<p class="err">Rakip bağlantısı koptu. Yeniden girmesini bekle.</p>`:''}
+function youTag(i){return V.seat===i?'<span class="you">sen</span>':''}
+function conn(p){if(!p)return'<span class="wait-dot off"></span>Boş koltuk';
+return `<span class="wait-dot ${p.connected?'':'off'}"></span>${e(p.name)}${p.connected?'':' (bağlantı yok)'}`}
+
+function lobby(){
+clearInterval(timer);
+const p0=V.players[0],p1=V.players[1];
+const my=V.players[V.seat];
+$('#app').innerHTML=`<h1>⚽ FC27 Kapışma</h1>
+<p class="mute">Oda kodunu arkadaşınla paylaş. İkiniz de bağlanınca ev sahibi oyunu başlatır.</p>
+<div class="panel center" style="margin:12px 0">
+<div class="mute">Oda kodu</div>
+<div class="code">${e(V.code)}</div>
+<p class="mute">Oyuncular: ${V.occupied}/2</p>
+<button class="ghost" onclick="navigator.clipboard.writeText(V.code)">Kodu kopyala</button>
+</div>
+<div class="row">
+<div class="panel team" style="--c:${COL[0]}"><h2>Takım 1 ${youTag(0)}</h2>
+<p>${conn(p0)}</p>
+${V.seat===0?`<label>Takım adı</label><input id="nme" maxlength="20" value="${e(my.name)}" onchange="socket.emit('setName',{name:this.value})">`:''}
+</div>
+<div class="panel team" style="--c:${COL[1]}"><h2>Takım 2 ${youTag(1)}</h2>
+<p>${p1?conn(p1):'<span class="mute">Arkadaşın kodu yazıp katılsın…</span>'}</p>
+${V.seat===1?`<label>Takım adı</label><input id="nme" maxlength="20" value="${e(my.name)}" onchange="socket.emit('setName',{name:this.value})">`:''}
+</div>
+</div>
+<div class="panel" style="margin-top:12px">
+<label>Başlangıç bütçesi (milyon)</label>
+<input id="bud" type="number" value="${V.budget}" min="30" max="1000" ${V.host?'':'disabled'}
+ onchange="socket.emit('setBudget',{budget:this.value})">
+<p class="mute">Başlangıç fiyatları: güçlü oyuncular 20M, ortalama 10M, diğerleri 5M.</p>
+${V.host
+?`<button ${V.occupied<2?'disabled':''} onclick="socket.emit('startGame')">Açık Artırmayı Başlat</button>`
+:'<p class="mute">Ev sahibinin başlamasını bekliyorsun.</p>'}
+<div class="err" id="err">${e(errMsg)}</div>
+</div>
+<div class="panel rules" style="margin-top:12px"><h2>📜 Oyun Kuralları</h2><ol>
+<li><b>Kadro:</b> Her takım tam <b>5 oyuncu</b> almak zorundadır: <b>1 kaleci (zorunlu)</b> + 4 saha oyuncusu.</li>
+<li><b>Sırayla açılış:</b> Oyuncuyu açan takım <b>teklif vermek zorundadır</b> (en az başlangıç fiyatı), pas geçemez.</li>
+<li><b>Karşı hamle:</b> Rakip teklifi artırabilir ya da pas geçebilir. Pas geçen taraf oyuncuyu kaybeder.</li>
+<li><b>Bütçe:</b> Teklifler +1 / +2 / +5 / +10. Boş slot için rezerv ayrılır. Kalecin varsa başka kaleciye teklif veremezsin.</li>
+<li><b>Formasyon ve maç:</b> Açık artırma bitince her takım formasyonunu seçer; sonra 90 dakikalık simülasyon oynanır.</li>
+</ol></div>`}
+
+function squadHtml(t){return (V.sq[t]||[]).map(mini).join('')||'<span class="mute">Henüz oyuncu yok</span>'}
+function teamPanel(t){
+const on=V.cur&&V.cur.turn===t,gk=(V.sq[t]||[]).some(p=>p.pos==='GK');
+return `<div class="panel team ${on?'on':''}" style="--c:${COL[t]}"><div class="bar"><h2>${e(V.names[t])} ${youTag(t)}</h2>
+<span class="mute">${V.sq[t].length}/5<span class="tag">KL ${gk?'✓':'gerekli'}</span></span></div>
+<div class="big">${V.bud[t]}M</div>${squadHtml(t)}</div>`}
+
+function auction(){
+clearInterval(timer);
+const c=V.cur,t=c.turn,mine=V.myTurn;
+const btns=V.amounts.map(x=>`<button ${mine&&x.ok?'':'disabled'} onclick="socket.emit('bid',{amt:${x.a}})">${x.a}M</button>`).join('');
+$('#app').innerHTML=`<div class="bar"><h1>⚽ Açık Artırma</h1><span class="mute">Oda ${e(V.code)} · Kalan: ${V.queueLen}</span></div>
+${oppOffline()}
+<div class="panel center"><div class="mute">${e(V.msg||'Yeni oyuncu açıldı')}</div>${cardHtml(c.p)}
+<p style="margin:10px 0 0">Başlangıç: <b>${c.p.base}M</b> · Güncel teklif: <b>${c.bid?c.bid+'M':'—'}</b>${c.leader!==null?` (${e(V.names[c.leader])})`:''}</p>
+<p style="color:${COL[t]};font-weight:700;margin:6px 0 0">Sıra: ${e(V.names[t])}${mine?' — senin sıran':''}</p>
+<p class="mute" style="margin:0">${mine?(V.forced?'Açılış teklifi zorunlu, pas geçilemez.':'Teklifi artırabilir ya da pas geçebilirsin.'):'Rakibin hamlesi bekleniyor…'} En fazla teklif: <b>${V.maxBid}M</b></p>
+<div class="bids">${btns}<button class="ghost" ${mine&&V.canPass?'':'disabled'} onclick="socket.emit('pass')">Pas</button></div></div>
+<div class="row" style="margin-top:12px">${teamPanel(0)}${teamPanel(1)}</div>`}
+
+function lineHtml(L){return ['FWD','MID','DEF','GK'].map(s=>{const a=L.filter(x=>x.slot===s);
+return a.length?`<div class="line"><div class="l">${s}</div>${a.map(x=>`<span class="mini"><b>${x.eff}</b> ${e(x.p.n)}${x.eff<x.p.o?` <span class="mute">(${x.p.pos}→${s})</span>`:''}</span>`).join('')}</div>`:''}).join('')}
+
+function formation(){
+clearInterval(timer);
+const pn=t=>{const L=V.lineups[t];const mine=V.seat===t;
+return `<div class="panel team" style="--c:${COL[t]}"><div class="bar"><h2>${e(V.names[t])} ${youTag(t)}</h2>
+<span class="mute">Kalan bütçe: ${V.bud[t]}M</span></div>
+<label>Formasyon (DEF-OS-FWD)</label>
+<select ${mine?'':'disabled'} onchange="socket.emit('setForm',{form:this.value})">${V.forms.map(f=>`<option value="${f}" ${V.form[t]===f?'selected':''}>${f} · ${e(V.formNames[f])}</option>`).join('')}</select>
+${lineHtml(L)}<p class="mute" style="margin:8px 0 0">Takım gücü: <b>${V.power[t]}</b>${V.ready[t]?' · hazır':''}</p></div>`};
+$('#app').innerHTML=`<h1>Formasyon Seç</h1>
+<p class="mute">Açık artırma bitti. Sadece kendi formasyonunu değiştirirsin. İkiniz de hazır olunca maç başlar.</p>
+<div class="row">${pn(0)}${pn(1)}</div>
+<div class="panel" style="margin-top:12px;text-align:center">
+<button ${V.ready[V.seat]?'disabled':''} onclick="socket.emit('readyMatch')">${V.ready[V.seat]?'Rakip bekleniyor…':'⚔ Maça hazırım'}</button>
+${V.host?` <button class="ghost" onclick="socket.emit('newGame')">Lobiye dön</button>`:''}
+</div>`}
+
+function matchKeyOf(m){return m.T[0]?.txt+'|'+m.T.length+'|'+m.g.join('-')+'|'+(m.pen||[]).join('-')}
+
+function match(ended){
+const r=V.match;if(!r)return;
+const key=matchKeyOf(r);
+const boot=key!==matchKey;
+if(boot){clearInterval(timer);matchKey=key;logI=0;
+$('#app').innerHTML=`<h1>Maç</h1>
+<div class="panel"><div class="bar"><b style="color:${COL[0]}">${e(V.names[0])} <span class="mute">${e(V.form[0])}</span></b>
+<b style="color:${COL[1]}">${e(V.names[1])} <span class="mute">${e(V.form[1])}</span></b></div>
+<div class="score"><span id="s0">0</span> - <span id="s1">0</span></div><div class="center mute" id="min">0'</div></div>
+<div class="panel" style="margin-top:12px"><div id="log"></div></div>
+<div class="center" style="margin-top:10px"><button class="ghost" id="skip">⏭ Atla</button></div>
+<div id="end"></div>`}
+const log=$('#log');if(!log)return;
+const apply=x=>{
+$('#min').textContent=x.pen?`Penaltılar ${x.pen[0]}-${x.pen[1]}`:x.m;
+$('#s0').textContent=x.g[0];$('#s1').textContent=x.g[1];
+log.insertAdjacentHTML('beforeend',`<div class="${x.goal?'goal':''}${x.mute?' mt':''}${x.sys?' sys':''}">${x.pen?'':x.m+' — '}${e(x.txt)}</div>`);
+log.scrollTop=log.scrollHeight};
+if(ended||r.skip){
+while(logI<r.T.length)apply(r.T[logI++]);
+clearInterval(timer);fin(r);return}
+if(!boot&&logI>0)return;
+const skipBtn=$('#skip');
+if(skipBtn)skipBtn.onclick=()=>socket.emit('skipMatch');
+const step=()=>{
+if(logI>=r.T.length){clearInterval(timer);socket.emit('matchDone');return}
+apply(r.T[logI++])};
+timer=setInterval(step,750);step()}
+
+function fin(r){
+const sk=$('#skip');if(sk)sk.remove();
+let w=r.g[0]>r.g[1]?0:r.g[1]>r.g[0]?1:null,txt='';
+if(w===null){w=r.pen[0]>r.pen[1]?0:1;txt=` · Penaltılar: ${r.pen[0]}-${r.pen[1]}`}
+if(!$('#log .final')){
+$('#log').insertAdjacentHTML('beforeend',`<div class="final"><b>Final skoru ${r.g[0]}-${r.g[1]}${txt}</b></div>`);
+$('#log').scrollTop=1e5}
+$('#end').innerHTML=`<div class="panel center" style="margin-top:12px;border-color:${COL[w]}"><div class="big">🏆 ${e(V.names[w])} kazandı!</div>
+<p class="mute">Takım gücü: ${e(V.names[0])} ${V.power[0]} · ${e(V.names[1])} ${V.power[1]}</p>
+<button onclick="socket.emit('rematch')">Rövanş</button>
+<button class="ghost" onclick="socket.emit('backToFormation')">Formasyonu Değiştir</button>
+${V.host?`<button class="ghost" onclick="socket.emit('newGame')">Yeni Oyun</button>`:''}</div>`}
+
+if(!loadSession())landing();
+</script>
+</body>
+</html>
