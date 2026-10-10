@@ -33,6 +33,31 @@ button.ghost{background:transparent;color:var(--text);border:1px solid var(--lin
 .center{text-align:center}
 #log{height:260px;overflow:auto;font-size:14px}
 #log div{padding:5px 0;border-bottom:1px solid var(--line)}#log .mt{color:var(--mute)}#log .sys{font-weight:700}
+#liveAction{min-height:24px;font-weight:700;text-align:center;margin-bottom:8px}
+.pitch{position:relative;width:100%;max-width:900px;margin:0 auto;aspect-ratio:2/1;min-height:240px;max-height:430px;overflow:hidden;border:2px solid #d9f2df;border-radius:8px;background:repeating-linear-gradient(90deg,#25714c 0%,#25714c 12.5%,#2b7953 12.5%,#2b7953 25%)}
+.pitch-outline{position:absolute;inset:5%;border:1px solid #ffffffb0}
+.pitch-mid{position:absolute;left:50%;top:5%;bottom:5%;border-left:1px solid #ffffffb0}
+.pitch-circle{position:absolute;left:50%;top:50%;width:22%;aspect-ratio:1;border:1px solid #ffffffb0;border-radius:50%;transform:translate(-50%,-50%)}
+.pitch-box{position:absolute;top:27%;height:46%;width:12%;border:1px solid #ffffffb0}
+.pitch-box.left{left:5%}.pitch-box.right{right:5%}
+.pitch-goal{position:absolute;top:40%;height:20%;width:3%;border:1px solid #ffffffd0}
+.pitch-goal.left{right:95%}.pitch-goal.right{left:95%}
+.pitch-player{position:absolute;z-index:2;display:grid;place-items:center;width:32px;height:32px;border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 2px 7px #14251b66;color:#fff;font-weight:900;font-size:11px;transition:box-shadow .2s ease}
+.pitch-player.t0{background:var(--a)}.pitch-player.t1{background:var(--b)}
+.pitch-player.active{box-shadow:0 0 0 3px #fff9,0 0 14px #fff;font-size:13px}
+.pitch.penalty-mode .pitch-player.penalty-bench{opacity:.38;box-shadow:none}
+.pitch.penalty-mode .pitch-player.penalty-bench .player-name{display:none}
+.pitch-player .player-name{position:absolute;top:calc(100% + 3px);left:50%;width:clamp(42px,7vw,64px);transform:translateX(-50%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;color:#fff;font-size:9px;font-weight:700;text-shadow:0 1px 3px #143322}
+.pitch-player.t1 .player-name{top:auto;bottom:calc(100% + 3px)}
+.match-ball{position:absolute;z-index:4;left:50%;top:50%;width:15px;height:15px;border:2px solid #20251f;border-radius:50%;background:#fff;transform:translate(-50%,-50%);box-shadow:0 1px 5px #14251b99;will-change:left,top}
+.goal-banner{position:absolute;z-index:8;left:50%;top:50%;width:min(82%,360px);padding:14px 18px;transform:translate(-50%,-50%);border:2px solid #fff;border-radius:8px;background:#101c18eF;color:#fff;text-align:center;box-shadow:0 8px 30px #07140fcc;pointer-events:none}
+.goal-banner:empty{display:none}
+.goal-banner .goal-team{font-size:14px;font-weight:700}.goal-banner .goal-player{font-size:18px;font-weight:800;margin-top:3px}.goal-banner .goal-word{font-size:34px;font-weight:1000;line-height:1.05;color:#f7d56a}
+.pitch-notice{position:absolute;z-index:7;top:7%;left:50%;padding:6px 12px;border:1px solid #fff;border-radius:5px;background:#111c;color:#fff;font-size:12px;font-weight:800;opacity:0;transform:translate(-50%,-5px);transition:opacity .15s ease,transform .15s ease;pointer-events:none}
+.pitch-notice.visible{opacity:1;transform:translate(-50%,0)}
+.pitch-key{display:flex;justify-content:center;gap:16px;margin-top:10px;font-size:12px;color:var(--mute)}
+.pitch-key span{display:inline-flex;align-items:center;gap:6px}.pitch-key i{width:9px;height:9px;border-radius:50%}.pitch-key .t0{background:var(--a)}.pitch-key .t1{background:var(--b)}
+@media(max-width:560px){.pitch{min-height:230px;aspect-ratio:1.35}.pitch-player{width:26px;height:26px;font-size:9px}.pitch-player .player-name{display:none}.match-ball{width:13px;height:13px}.goal-banner{padding:10px 12px}.goal-banner .goal-team{font-size:12px}.goal-banner .goal-player{font-size:16px}.goal-banner .goal-word{font-size:30px}.pitch-notice{font-size:10px;padding:5px 9px}}
 .goal{font-weight:800;color:var(--ok)}
 .score{font-size:44px;font-weight:900;text-align:center}
 .line{margin:6px 0}.line .l{font-size:11px;color:var(--mute);text-transform:uppercase}
@@ -64,31 +89,56 @@ const FN={"2-1-1":"Dengeli","1-2-1":"Elmas","1-1-2":"Hücumcu","2-0-2":"Çift ka
 const IDX={DEF:0,MID:1,FWD:2};
 const $=s=>document.querySelector(s);
 const e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let S=null,timer=null;
-let room=null,roomPlayers=[],roomRevision=0,peer=null,connection=null,committing=false;
-const ROOM_KEY='fc27-peer-room',ROOM_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function saveRoom(){if(room)localStorage.setItem(ROOM_KEY,JSON.stringify({code:room.code,seat:room.seat,players:roomPlayers,revision:roomRevision,state:room.seat===0?S:null}))}
-function randomCode(){let code='FC27-';for(let i=0;i<6;i++)code+=ROOM_ALPHABET[Math.floor(Math.random()*ROOM_ALPHABET.length)];return code}
-function createRoom(){if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openHost(randomCode())}
-function joinRoom(){const code=$('#roomCode').value.trim().toUpperCase();if(!/^FC27-[A-HJ-NP-Z2-9]{6}$/.test(code))return renderHome('Oda kodunu FC27-XXXXXX biçiminde gir.');if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openGuest(code)}
-function openHost(code,saved=null){
-peer=new Peer(code);peer.on('open',id=>{room={code:id,seat:0};roomPlayers=saved?.players||[{name:'Kırmızı Şimşekler'},null];roomRevision=saved?.revision||0;S=saved?.state||null;saveRoom();renderCurrent()});
-peer.on('connection',conn=>{if(connection?.open){conn.close();return}connection=conn;conn.on('data',message=>handleHostMessage(conn,message));conn.on('open',()=>{roomPlayers[1]=roomPlayers[1]||{name:'Mavi Fırtına'};sendSnapshot();renderLobby()});conn.on('close',()=>{if(connection===conn){connection=null;roomPlayers[1]=null;saveRoom();if(!S?.phase)renderLobby()}})});
-peer.on('error',error=>{if(error.type==='unavailable-id'){peer.destroy();peer=null;room=null;renderHome('Bu oda kodu kullanımda. Yeniden oda oluştur.')}else if(error.type!=='disconnected')showConnectionError(error.message)})}
+let S=null,timer=null,pitchFrame=0,pitchNoticeTimer=null;
+let room=null,roomPlayers=[],roomRevision=0,peer=null,connection=null,committing=false,reconnectTimer=null,heartbeatTimer=null,lastPong=0,guestEverConnected=false,closingRoom=false;
+const ROOM_KEY='fc27-peer-room';
+function saveRoom(){if(room)localStorage.setItem(ROOM_KEY,JSON.stringify({code:room.code,seat:room.seat,players:roomPlayers,revision:roomRevision,matchIndex:room.seat===0?matchEventIndex:remoteMatchIndex,state:room.seat===0?S:null}))}
+function randomCode(){return String(Math.floor(Math.random()*10000)).padStart(4,'0')}
+function createRoom(){if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openHost(randomCode(),null,8)}
+function joinRoom(){const code=$('#roomCode').value.trim();if(!/^\d{4}$/.test(code))return renderHome('4 haneli oda kodunu gir.');if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openGuest(code)}
+function openHost(code,saved=null,retries=0){
+const hostPeer=new Peer(code);peer=hostPeer;
+hostPeer.on('open',id=>{if(peer!==hostPeer)return;room={code:id,seat:0};roomPlayers=saved?.players||[{name:'Kırmızı Şimşekler'},null];roomRevision=saved?.revision||0;matchEventIndex=saved?.matchIndex||0;S=saved?.state||null;saveRoom();renderCurrent()});
+hostPeer.on('connection',conn=>{if(connection?.open&&connection.peer!==conn.peer){conn.close();return}if(connection?.open)connection.close();connection=conn;
+conn.on('data',message=>{if(connection===conn)handleHostMessage(conn,message)});
+conn.on('open',()=>{if(connection!==conn)return;clearConnectionNotice();roomPlayers[1]=roomPlayers[1]||{name:'Mavi Fırtına'};sendSnapshot();if(S?.phase)renderCurrent();else renderLobby()});
+conn.on('close',()=>{if(connection===conn){connection=null;roomPlayers[1]=null;saveRoom();if(!S?.phase)renderLobby()}})});
+hostPeer.on('disconnected',()=>{try{hostPeer.reconnect()}catch{}});
+hostPeer.on('error',error=>{if(error.type==='unavailable-id'){if(!saved&&retries>0){hostPeer.destroy();if(peer===hostPeer)peer=null;openHost(randomCode(),null,retries-1);return}hostPeer.destroy();if(peer===hostPeer)peer=null;room=null;renderHome('Bu oda kodu kullanımda. Yeni bir oda oluştur.')}else if(error.type!=='disconnected')showConnectionError(error.message)})}
 function openGuest(code,savedName='Mavi Fırtına'){
-peer=new Peer();peer.on('open',()=>{room={code,seat:1};roomPlayers=[null,{name:savedName}];roomRevision=0;S=null;connection=peer.connect(code,{reliable:true});
-connection.on('open',()=>connection.send({type:'join',name:savedName}));connection.on('data',handlePeerMessage);connection.on('close',()=>showConnectionError('Oda sahibiyle bağlantı kesildi. Yeniden bağlanmak için odaya tekrar katıl.'));connection.on('error',error=>showConnectionError(error.message))});
-peer.on('error',error=>{if(error.type==='peer-unavailable'){peer.destroy();peer=null;room=null;renderHome('Oda bulunamadı. Oda kodunu kontrol et ve hostun bağlı kaldığından emin ol.')}else if(error.type!=='disconnected')showConnectionError(error.message)})}
+closingRoom=false;guestEverConnected=false;reconnectAttempts=0;clearTimeout(reconnectTimer);clearInterval(heartbeatTimer);
+const guestPeer=new Peer();peer=guestPeer;
+guestPeer.on('open',()=>{if(peer!==guestPeer)return;room={code,seat:1};roomPlayers=[null,{name:savedName}];roomRevision=0;S=null;connectGuest(savedName)});
+guestPeer.on('disconnected',()=>{try{guestPeer.reconnect()}catch{}if(guestEverConnected)scheduleGuestReconnect(savedName)});
+guestPeer.on('error',error=>{if(error.type==='peer-unavailable'){if(guestEverConnected){connection=null;scheduleGuestReconnect(savedName)}else{guestPeer.destroy();if(peer===guestPeer)peer=null;room=null;renderHome('Oda bulunamadı. Kodu kontrol et ve hostun bağlı kalmasını sağla.')}}else if(error.type!=='disconnected')showConnectionError(error.message)})}
+function connectGuest(savedName){
+if(closingRoom||!peer||room?.seat!==1||connection?.open)return;
+if(connection){const previous=connection;connection=null;previous.close()}
+const guestPeer=peer,conn=guestPeer.connect(room.code,{reliable:true});connection=conn;
+conn.on('open',()=>{if(connection!==conn)return;clearConnectionNotice();guestEverConnected=true;reconnectAttempts=0;lastPong=Date.now();clearTimeout(reconnectTimer);reconnectTimer=null;conn.send({type:'join',name:savedName});clearInterval(heartbeatTimer);
+heartbeatTimer=setInterval(()=>{if(connection!==conn||!conn.open)return;if(Date.now()-lastPong>9000){conn.close();return}try{conn.send({type:'ping',at:Date.now()})}catch{conn.close()}},2500)});
+conn.on('data',message=>{if(connection===conn)handlePeerMessage(message)});
+conn.on('close',()=>{if(connection!==conn)return;connection=null;clearInterval(heartbeatTimer);heartbeatTimer=null;if(guestEverConnected)scheduleGuestReconnect(savedName)});
+conn.on('error',()=>{if(connection===conn)showConnectionError('Host bağlantısı yenileniyor…')})}
+function scheduleGuestReconnect(savedName){
+if(closingRoom||!peer||!room||room.seat!==1)return;clearTimeout(reconnectTimer);reconnectAttempts++;
+const delay=Math.min(8000,500*(2**Math.min(reconnectAttempts-1,4)));showConnectionError('Host bağlantısı kesildi. Yeniden bağlanıyor…');
+reconnectTimer=setTimeout(()=>connectGuest(savedName),delay)}
 function resumeRoom(){let saved;try{saved=JSON.parse(localStorage.getItem(ROOM_KEY)||'null')}catch{return}if(!saved||typeof Peer==='undefined')return;if(saved.seat===0)openHost(saved.code,saved);else openGuest(saved.code,saved.players?.[1]?.name||'Mavi Fırtına')}
+let matchPlayback=null,matchEventIndex=0,remoteMatchIndex=0;
 function handleHostMessage(conn,message){if(!message||typeof message!=='object')return;
+if(message.type==='ping'){if(connection===conn&&conn.open)conn.send({type:'pong',at:message.at});return}
+if(message.type==='pong')return;
 if(message.type==='join'||message.type==='rename'){roomPlayers[1]={name:cleanTeamName(message.name,'Mavi Fırtına')};roomRevision++;saveRoom();sendSnapshot();if(!S?.phase)renderLobby();return}
 if(message.type==='action'){
 if(message.revision!==roomRevision||!applyPeerAction(message)){conn.send({type:'error',message:'Hamle kabul edilmedi; oyun durumu yenilendi.'});sendSnapshot();return}
 roomRevision++;saveRoom();sendSnapshot();renderCurrent()}}
 function handlePeerMessage(message){if(!message||typeof message!=='object')return;
-if(message.type==='snapshot'){const wasLobby=!S?.phase;roomPlayers=message.players;roomRevision=message.revision;S=message.state;committing=false;saveRoom();renderCurrent();if(wasLobby&&!roomPlayers[0])showConnectionError('Oda sahibi çevrimdışı.');return}
+if(message.type==='pong'){lastPong=Date.now();return}
+if(message.type==='snapshot'||message.type==='match'){const wasLobby=!S?.phase;if(message.type==='match'&&message.seed!==message.state?.match?.seed)return;roomPlayers=message.players;roomRevision=message.revision;remoteMatchIndex=message.matchIndex||0;S=message.state;committing=false;saveRoom();renderCurrent();if(wasLobby&&!roomPlayers[0])showConnectionError('Oda sahibi çevrimdışı.');return}
+if(message.type==='match-event'){if(room?.seat===1&&S?.phase==='match'&&message.revision===roomRevision&&matchPlayback){while(matchPlayback.index<message.index)playMatchEvent(matchPlayback.index,false,true);if(message.index===matchPlayback.index)playMatchEvent(message.index,false,message.instant===true,message.startedAt)}return}
 if(message.type==='error'){committing=false;showConnectionError(message.message)}}
-function sendSnapshot(){if(!room)return;saveRoom();if(connection?.open)connection.send({type:'snapshot',state:S,revision:roomRevision,players:roomPlayers})}
+function sendSnapshot(){if(!room)return;saveRoom();if(connection?.open){const matching=S?.phase==='match';connection.send({type:matching?'match':'snapshot',...(matching?{seed:S.match.seed}:{}),state:S,revision:roomRevision,players:roomPlayers,matchIndex:matchEventIndex})}}
 function validAction(seat,operation,next,team){
 if(operation==='initialize')return seat===0&&S===null&&next?.phase==='auction'&&roomPlayers[1]!==null;
 if(operation==='reset')return seat===0&&S!==null&&next===null;
@@ -101,15 +151,16 @@ function applyPeerAction(message){const seat=1,operation=message.operation;
 if(operation==='bid'){const amount=Number(message.amount);if(S.phase!=='auction'||S.cur?.turn!==seat||!Number.isInteger(amount)||!amts().includes(amount)||!canBid(seat,amount))return false;const c=S.cur;c.bid=amount;c.leader=seat;c.turn=1-seat;S.msg=`${S.names[seat]} ${amount}M teklif verdi`;if(!canBid(c.turn,amts()[0])){S.msg+=` · ${S.names[c.turn]} artıramıyor`;win(c.leader)}else render();return true}
 if(operation==='pass'){if(S.phase!=='auction'||S.cur?.turn!==seat||S.cur.leader===null)return false;win(S.cur.leader);return true}
 if(operation==='formation'){if(S.phase!=='lineup'||message.team!==seat||!FORMS.includes(message.value))return false;S.form[seat]=message.value;lineupPage();return true}
-if(operation==='start_match'){if(!['lineup','result'].includes(S.phase))return false;S.L=[lineup(0),lineup(1)];S.match=simulate();S.phase='match';showMatch();return true}
+if(operation==='start_match'){if(!['lineup','result'].includes(S.phase))return false;S.L=[lineup(0),lineup(1)];S.match=simulate(randomSeed());S.phase='match';matchEventIndex=0;return true}
 if(operation==='finish_match'){if(S.phase!=='match')return false;S.phase='result';renderResult();return true}return false}
 function showConnectionError(message){let notice=$('#notice');if(!notice){notice=document.createElement('p');notice.className='notice';$('#app').prepend(notice)}notice.textContent=message}
+function clearConnectionNotice(){$('#app')?.querySelectorAll(':scope > .notice:not(#notice)').forEach(notice=>notice.remove())}
 function cleanTeamName(name,fallback){const clean=String(name||'').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,20);return clean||fallback}
 function commitState(operation,mutate,extra={}){if(committing||!room)return;committing=true;const previous=S;let candidate;
 try{S=structuredClone(S);mutate();candidate=S;S=previous}catch(error){S=previous;committing=false;throw error}
 if(room.seat===0){if(!validAction(0,operation,candidate,extra.team)){committing=false;showConnectionError('Bu hamle şu anda geçerli değil.');return}S=candidate;roomRevision++;committing=false;sendSnapshot();renderCurrent();return}
-if(!connection?.open){committing=false;showConnectionError('Host ile bağlantı yok.');return}
-connection.send({type:'action',operation,revision:roomRevision,...extra})}
+if(!connection?.open){committing=false;scheduleGuestReconnect(roomPlayers[1]?.name||'Mavi Fırtına');return}
+try{connection.send({type:'action',operation,revision:roomRevision,...extra})}catch{committing=false;scheduleGuestReconnect(roomPlayers[1]?.name||'Mavi Fırtına')}}
 function renderCurrent(){if(!room)return;if(!S?.phase){clearInterval(timer);renderLobby();return}if(S.phase==='auction')render();else if(S.phase==='lineup')lineupPage();else if(S.phase==='match')showMatch();else if(S.phase==='result')renderResult()}
 
 function cardHtml(p){const c=p.o>=88?'':p.o>=84?'s':'br';
@@ -120,7 +171,7 @@ const mini=p=>`<span class="mini"><b>${p.o}</b>${p.pos} ${e(p.n)} <span class="m
 function renderHome(message=''){
 clearInterval(timer);$('#app').innerHTML=`<main class="home"><h1>⚽ FC27 KAPIŞMA</h1><p class="mute lead">İki takım. Tek oda. Kapışma başlasın.</p>
 <div class="panel"><button onclick="createRoom()">Oda Oluştur</button></div>
-<div class="panel"><h2>Odaya Katıl</h2><label for="roomCode">Oda kodu</label><div class="join"><input id="roomCode" maxlength="11" autocomplete="off" placeholder="FC27-ABC123"><button onclick="joinRoom()">Katıl</button></div>${message?`<p class="notice">${e(message)}</p>`:''}</div></main>`}
+<div class="panel"><h2>Odaya Katıl</h2><label for="roomCode">Oda kodu</label><div class="join"><input id="roomCode" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="one-time-code" placeholder="1234"><button onclick="joinRoom()">Katıl</button></div>${message?`<p class="notice">${e(message)}</p>`:''}</div></main>`}
 function setup(){renderHome()}
 function renderLobby(){
 const host=room.seat===0,ready=roomPlayers[0]&&roomPlayers[1];
@@ -130,8 +181,8 @@ $('#app').innerHTML=`<main class="home"><div class="bar"><h1>Oda Lobisi</h1><but
 <div class="panel team" style="--c:${COL[1]}"><h2>Takım 2 ${room.seat===1?'· Sen':''}</h2><label>Takım adı</label><input value="${e(roomPlayers[1]?.name||'Mavi Fırtına')}" maxlength="20" ${room.seat===1?'':'disabled'} onchange="renameTeam(this.value)"></div></div>
 ${host?`<div class="panel"><label>Başlangıç bütçesi (milyon)</label><input id="bud" type="number" value="100" min="30" max="1000"><p class="mute">Güçlü oyuncular 20M, ortalama oyuncular 10M, diğerleri 5M.</p><button ${ready?'':'disabled'} onclick="start()">Açık Artırmayı Başlat</button></div>`:`<div class="panel center"><p class="mute">Oda sahibi oyunu başlattığında açık artırma başlayacak.</p></div>`}
 <details class="panel rules"><summary>Oyun kuralları</summary><ol><li>Her takım 5 oyuncu alır: 1 kaleci ve 4 saha oyuncusu.</li><li>Oyuncu açılışında ilk teklif zorunludur. Sıra rakibe geçince teklif artırılabilir veya pas geçilebilir.</li><li>Teklifler bütçeye ve boş kadro slotlarına göre sınırlandırılır; kaleci zorunludur.</li><li>Açık artırma bitince her takım DEF-OS-FWD formasyonunu seçer.</li><li>Maç 90 dakika simüle edilir; beraberlikte seri penaltı atışları yapılır.</li></ol></details><p id="notice" class="notice"></p></main>`}
-function renameTeam(name){const clean=cleanTeamName(name,room.seat?'Mavi Fırtına':'Kırmızı Şimşekler');if(room.seat===0){roomPlayers[0]={name:clean};roomRevision++;sendSnapshot()}else if(connection?.open)connection.send({type:'rename',name:clean})}
-function leaveRoom(){clearInterval(timer);connection?.close();peer?.destroy();connection=null;peer=null;localStorage.removeItem(ROOM_KEY);room=null;roomPlayers=[];S=null;renderHome()}
+function renameTeam(name){const clean=cleanTeamName(name,room.seat?'Mavi Fırtına':'Kırmızı Şimşekler');if(room.seat===0){roomPlayers[0]={name:clean};roomRevision++;sendSnapshot()}else if(connection?.open){try{connection.send({type:'rename',name:clean})}catch{scheduleGuestReconnect(clean)}}else scheduleGuestReconnect(clean)}
+function leaveRoom(){closingRoom=true;clearInterval(timer);clearTimeout(reconnectTimer);clearInterval(heartbeatTimer);connection?.close();peer?.destroy();connection=null;peer=null;localStorage.removeItem(ROOM_KEY);room=null;roomPlayers=[];S=null;renderHome()}
 function start(){
 if(room.seat!==0||!roomPlayers[1])return;
 const b=Math.max(30,Math.min(1000,+$('#bud').value||100));
@@ -215,57 +266,183 @@ $('#app').innerHTML=`<h1>Formasyon Seç</h1><p class="mute">Açık artırma bitt
 <div class="panel" style="margin-top:12px;text-align:center"><button onclick="play()">⚔ Maçı Başlat</button> ${room.seat===0?'<button class="ghost" onclick="resetGame()">Yeniden Kur</button>':''}</div>`}
 
 /* ---------- Maç ---------- */
-const pick=a=>a[Math.floor(Math.random()*a.length)];
-function scorer(t){const w=S.L[t].map(x=>({p:x.p,w:({FWD:5,MID:3,DEF:1,GK:0})[x.slot]*(x.eff/80)}));
-let r=Math.random()*w.reduce((s,x)=>s+x.w,0);for(const x of w){r-=x.w;if(r<=0)return x.p}return w[1].p}
+const pick=(a,random=Math.random)=>a[Math.floor(random()*a.length)];
+function randomSeed(){return crypto.getRandomValues(new Uint32Array(1))[0]||1}
+function seededRandom(seed){let state=seed>>>0;return()=>{state=(state+0x6D2B79F5)>>>0;let value=state;value=Math.imul(value^value>>>15,value|1);value^=value+Math.imul(value^value>>>7,value|61);return((value^value>>>14)>>>0)/4294967296}}
+function scorer(t,random){const w=S.L[t].map(x=>({p:x.p,w:({FWD:5,MID:3,DEF:1,GK:0})[x.slot]*(x.eff/80)}));
+let r=random()*w.reduce((s,x)=>s+x.w,0);for(const x of w){r-=x.w;if(r<=0)return x.p}return w[1].p}
 
-function simulate(){
-const st=[strength(S.L[0]),strength(S.L[1])],T=[],g=[0,0];
+function pitchPlayers(){return S.L.flatMap((team,t)=>team.map(entry=>{
+const group=team.filter(player=>player.slot===entry.slot),index=group.indexOf(entry);
+const y=group.length===1?50:22+index*56/(group.length-1);
+const leftSide=t===0,x={GK:leftSide?7:93,DEF:leftSide?20:80,MID:leftSide?32:68,FWD:leftSide?44:56}[entry.slot];
+return{t,p:entry.p,slot:entry.slot,eff:entry.eff,x,y}}))}
+function pitchHtml(){return `<div class="pitch" id="pitch"><div class="pitch-outline"></div><div class="pitch-mid"></div><div class="pitch-circle"></div><div class="pitch-box left"></div><div class="pitch-box right"></div><div class="pitch-goal left"></div><div class="pitch-goal right"></div>
+${pitchPlayers().map(player=>`<div class="pitch-player t${player.t}" data-team="${player.t}" data-player="${e(player.p.n)}" data-slot="${player.slot}" data-x="${player.x}" data-y="${player.y}" style="left:${player.x}%;top:${player.y}%" title="${e(player.p.n)} · ${player.eff}"><span>${player.eff}</span><span class="player-name">${e(player.p.n)}</span></div>`).join('')}<div class="match-ball" id="ball"></div><div id="goalBanner" class="goal-banner" aria-live="assertive"></div><div id="pitchNotice" class="pitch-notice" aria-live="polite"></div></div>
+<div class="pitch-key"><span><i class="t0"></i>${e(S.names[0])}</span><span><i class="t1"></i>${e(S.names[1])}</span></div>`}
+function showPitchEvent(scene,text,eventIndex=0,instant=false,startedAt=Date.now()){
+const action=$('#liveAction'),pitch=$('#pitch'),ball=$('#ball');if(action)action.textContent=text;if(!pitch||!ball)return;
+scene=scene||{type:'flow',team:0};
+if(scene.type==='halftime')S.sidesSwitched=true;
+const players=[...pitch.querySelectorAll('.pitch-player')],find=(team,name)=>players.find(player=>+player.dataset.team===team&&player.dataset.player===name);
+players.forEach(player=>player.classList.remove('active'));
+const readPosition=element=>({x:parseFloat(element.style.left)||50,y:parseFloat(element.style.top)||50});
+const starts=new Map(players.map(player=>[player,readPosition(player)])),targets=new Map(),team0Right=!S.sidesSwitched;
+const directionFor=team=>((team===0)===team0Right)?1:-1;
+const random=seededRandom(((S.match?.seed||1)^Math.imul(eventIndex+1,0x9E3779B9))>>>0),team=scene.possessionTeam??scene.team??0,direction=directionFor(team);
+const actorTeam=scene.type==='yellow'?scene.team:team,actor=scene.from?find(actorTeam,scene.from):null,receiver=scene.to?find(team,scene.to):null;
+const actorCarriesBall=actor&&scene.type!=='yellow',ballFrom=readPosition(ball);
+const ownGoal=direction>0?7:93,ballProgress=Math.max(0,Math.min(1,(ballFrom.x-ownGoal)*direction/86));
+showPitchNotice(scene,instant);
+players.forEach(player=>{
+const owner=+player.dataset.team,slot=player.dataset.slot,dir=directionFor(owner),initialX=+player.dataset.x,baseX=scene.type==='halftime'?100-initialX:initialX,baseY=+player.dataset.y,attacking=owner===team;
+if(scene.type==='halftime')player.dataset.x=String(baseX);
+const maximumAdvance={GK:1,DEF:30,MID:42,FWD:45}[slot]||8,maximumRetreat={GK:1,DEF:9,MID:8,FWD:5}[slot]||6;
+const ownProgress=Math.max(0,Math.min(1,(ballFrom.x-(dir>0?7:93))*dir/86));
+const movement=slot==='GK'?0:attacking?maximumAdvance*(.08+.92*ownProgress):-maximumRetreat*ballProgress;
+const compact={GK:.14,DEF:.32,MID:.24,FWD:.18}[slot]||.2;
+targets.set(player,{x:baseX+dir*movement,y:Math.max(10,Math.min(90,baseY+(ballFrom.y-baseY)*compact+(random()-.5)*2))});
+});
+const keeper=scene.keeper?find(1-team,scene.keeper):null,defender=scene.defender?find(1-team,scene.defender):keeper;
+const penalty=['penalty-goal','penalty-miss'].includes(scene.type),shot=['goal','save','wide','post','block','penalty-goal','penalty-miss'].includes(scene.type);
+if(penalty)pitch.classList.add('penalty-mode');else if(scene.type==='flow'||scene.type==='kickoff')pitch.classList.remove('penalty-mode');
+if(penalty){const bench=players.filter(player=>player!==actor&&player!==defender);bench.forEach((player,index)=>{player.classList.add('penalty-bench');targets.set(player,{x:50+(index%2?3:-3),y:12+index*76/Math.max(1,bench.length-1)})});[actor,defender].filter(Boolean).forEach(player=>player.classList.remove('penalty-bench'))}
+else players.forEach(player=>player.classList.remove('penalty-bench'));
+if(actor){actor.classList.add('active');const point=targets.get(actor),dir=directionFor(team);if(penalty){point.x=direction>0?84:16;point.y=50}else if(shot){point.x=direction>0?84:16;point.y=scene.targetY??point.y}else if(scene.type==='dribble'){point.x+=dir*9;point.y=scene.targetY??point.y}else if(scene.type==='cross')point.x+=dir*3}
+if(receiver){receiver.classList.add('active');const point=targets.get(receiver),dir=directionFor(team);point.x+=dir*(scene.type==='cross'?5:2);if(scene.type==='cross')point.y=50}
+if(defender){defender.classList.add('active');const point=targets.get(defender),attacker=actor?targets.get(actor):ballFrom;if(penalty){point.x=direction>0?94:6;point.y=scene.keeperY??50}else if(scene.type==='save'){point.x=direction>0?94:6;point.y=Math.max(15,Math.min(85,scene.keeperY??scene.targetY??ballFrom.y))}else{point.x+=(attacker.x-point.x)*.26;point.y+=(attacker.y-point.y)*.26}}
+players.forEach(player=>{const point=targets.get(player);if(penalty&&player.classList.contains('penalty-bench')){point.y=Math.max(10,Math.min(90,point.y));return}const slot=player.dataset.slot,forwardLimit={GK:2,DEF:31,MID:43,FWD:46}[slot]||8,backLimit={GK:2,DEF:10,MID:9,FWD:7}[slot]||7,baseX=+player.dataset.x,dir=directionFor(+player.dataset.team),along=(point.x-baseX)*dir;point.x=actor===player&&shot?(dir>0?84:16):baseX+dir*Math.max(-backLimit,Math.min(forwardLimit,along));point.y=Math.max(10,Math.min(90,point.y))});
+const pitchRect=pitch.getBoundingClientRect(),minDistance=(players[0]?.getBoundingClientRect().width||26)+3;
+for(let pass=0;pass<3;pass++)for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
+const a=targets.get(players[i]),b=targets.get(players[j]),dx=(b.x-a.x)*pitchRect.width/100,dy=(b.y-a.y)*pitchRect.height/100,distance=Math.hypot(dx,dy);
+if(distance>=minDistance)continue;const shift=(minDistance-distance)/2+1;
+if(Math.abs(dx)>=Math.abs(dy)){const sign=dx>=0?1:-1;a.x=Math.max(5,Math.min(95,a.x-sign*shift*100/pitchRect.width));b.x=Math.max(5,Math.min(95,b.x+sign*shift*100/pitchRect.width))}
+else{const sign=dy>=0?1:-1;a.y=Math.max(10,Math.min(90,a.y-sign*shift*100/pitchRect.height));b.y=Math.max(10,Math.min(90,b.y+sign*shift*100/pitchRect.height))}}
+const foot=(point,dir=direction)=>({x:point.x+dir*1.4,y:point.y+2});
+let ballTo=actorCarriesBall?foot(targets.get(actor)):{...ballFrom};
+if(receiver)ballTo=foot(targets.get(receiver));
+if(defender&&(scene.type==='save'||scene.type==='block'||scene.type==='tackle'))ballTo={...targets.get(defender)};
+if(['goal','save','wide','post','penalty-goal','penalty-miss'].includes(scene.type)){
+const goalX=direction>0?96:4,keeperTarget=scene.type==='save'&&defender?targets.get(defender):null;
+ballTo=keeperTarget?{...keeperTarget}:{x:goalX,y:scene.targetY??(scene.type==='wide'?17:scene.type==='post'?44:50)};
+}
+if(scene.type==='corner')ballTo={x:direction>0?96:4,y:scene.cornerY??(ballFrom.y<50?8:92)};
+if(scene.type==='halftime'||scene.type==='kickoff'||scene.type==='yellow')ballTo={x:50,y:50};
+const duration=scene.type==='halftime'?1200:scene.type==='cross'?900:penalty?1650:shot?1250:620;
+animatePitch(players,starts,targets,ball,ballFrom,ballTo,scene,duration,instant,actor,receiver,defender,direction,Math.max(0,Date.now()-startedAt));
+if(!instant&&(scene.type==='goal'||scene.type==='penalty-goal'))showGoalBanner(scene,Math.max(0,Date.now()-startedAt));
+}
+function animatePitch(players,starts,targets,ball,from,to,scene,duration,instant=false,actor=null,receiver=null,defender=null,direction=1,elapsed=0){
+if(pitchFrame)cancelAnimationFrame(pitchFrame);let startTime=0;
+const goal=scene.type==='goal'||scene.type==='penalty-goal',penalty=scene.type==='penalty-goal'||scene.type==='penalty-miss',shot=['goal','save','wide','post','block','penalty-goal','penalty-miss'].includes(scene.type),carriesBall=actor&&scene.type!=='yellow';
+const center={x:50,y:50},foot=point=>({x:point.x+direction*1.4,y:point.y+2}),mix=(a,b,t)=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});
+if(instant){players.forEach(player=>{const point=targets.get(player);player.style.left=`${point.x}%`;player.style.top=`${point.y}%`});ball.style.left=`${goal||scene.type==='halftime'?50:to.x}%`;ball.style.top=`${goal||scene.type==='halftime'?50:to.y}%`;pitchFrame=0;return}
+const draw=timestamp=>{
+if(!$('#pitch')||S?.phase!=='match'){pitchFrame=0;return}
+if(!startTime)startTime=timestamp-Math.min(elapsed,duration);const progress=Math.min(1,(timestamp-startTime)/duration),ease=progress*progress*(3-2*progress);
+const approach=penalty?.58:.44,positions=new Map();players.forEach(player=>{const a=starts.get(player),b=targets.get(player),moveProgress=shot&&player===actor?Math.min(1,ease/approach):ease,point=mix(a,b,moveProgress);positions.set(player,point);player.style.left=`${point.x}%`;player.style.top=`${point.y}%`});
+let point;
+if(shot&&actor){
+const shooter=foot(targets.get(actor));
+if(progress<approach)point=foot(positions.get(actor));
+else{const flight=(progress-approach)/(1-approach);
+if(goal){if(flight<.68)point=mix(shooter,to,flight/.68);else point=mix(to,center,(flight-.68)/.32)}
+else if(scene.type==='post'&&flight>.8){const rebound={x:to.x-direction*4,y:Math.max(8,Math.min(92,to.y+(to.y<50?7:-7)))};point=mix(to,rebound,(flight-.8)/.2)}
+else point=mix(shooter,to,flight)}}
+else if(scene.type==='dribble'&&carriesBall)point=foot(positions.get(actor));
+else if(scene.type==='corner')point=mix(from,to,ease);
+else if(receiver&&carriesBall){const target=foot(positions.get(receiver));point=mix(from,target,ease);if(scene.type==='cross')point.y-=Math.sin(ease*Math.PI)*12}
+else if(carriesBall)point=foot(positions.get(actor));
+else{point=mix(from,to,ease);if(scene.type==='cross')point.y-=Math.sin(ease*Math.PI)*12}
+ball.style.left=`${point.x}%`;ball.style.top=`${point.y}%`;
+if(progress<1)pitchFrame=requestAnimationFrame(draw);else{players.forEach(player=>{const point=targets.get(player);player.style.left=`${point.x}%`;player.style.top=`${point.y}%`});ball.style.left=`${goal?50:to.x}%`;ball.style.top=`${goal?50:to.y}%`;pitchFrame=0}}
+pitchFrame=requestAnimationFrame(draw)}
+function showPitchNotice(scene,instant=false){const notice=$('#pitchNotice');if(!notice)return;clearTimeout(pitchNoticeTimer);
+const text=scene.type==='corner'?'KORNER':scene.type==='yellow'?`SARI KART · ${scene.from||''}`:scene.type==='halftime'?'DEVRE ARASI':'';
+notice.textContent=instant?'':text;notice.classList.toggle('visible',!instant&&!!text);if(text&&!instant)pitchNoticeTimer=setTimeout(()=>notice.classList.remove('visible'),1800)}
+function showGoalBanner(scene,elapsed=0){
+const banner=$('#goalBanner');if(!banner)return;
+banner.getAnimations().forEach(animation=>animation.cancel());
+banner.innerHTML=`<div class="goal-team">${e(S.names[scene.team])}</div><div class="goal-player">${e(scene.from)}</div><div class="goal-word">GOAAL</div>`;
+const animation=banner.animate([{opacity:0,transform:'translate(-50%,-50%) scale(.86)'},{opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.1},{opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.86},{opacity:0,transform:'translate(-50%,-50%) scale(.96)'}],{duration:3500,easing:'ease-out',fill:'forwards'});
+animation.currentTime=Math.min(elapsed,3500);
+animation.onfinish=()=>banner.replaceChildren();
+}
+
+function simulate(seed){
+const random=seededRandom(seed),st=[strength(S.L[0]),strength(S.L[1])],T=[],g=[0,0];
 const add=(m,txt,o)=>T.push({m,txt,g:[...g],...(o||{})});
-add("0'",`🔔 Hakem düdüğü çaldı! ${S.names[0]} (${S.form[0]}) - ${S.names[1]} (${S.form[1]})`,{sys:1});
+add("0'",`🔔 Hakem düdüğü çaldı! ${S.names[0]} (${S.form[0]}) - ${S.names[1]} (${S.form[1]})`,{sys:1,scene:{type:'kickoff',team:0}});
 for(let m=4;m<=88;m+=4){
-const pa=st[0].atk/(st[0].atk+st[1].atk),t=Math.random()<pa?0:1,o=1-t,p=scorer(t),n=S.names[t];
-add(m+"'",pick([`${n} orta sahada topu çeviriyor.`,`${p.n} topu ileri taşıyor.`,`Kanattan bir orta geliyor...`,`${n} baskıyı artırdı.`,`${p.n} savunmayı geçmeye çalışıyor.`]),{mute:1});
+const pa=st[0].atk/(st[0].atk+st[1].atk),t=random()<pa?0:1,o=1-t,p=scorer(t,random),n=S.names[t];
+const teammates=S.L[t].filter(x=>x.slot!=='GK'&&x.p.n!==p.n),receiver=pick(teammates,random)||S.L[t].find(x=>x.p.n===p.n);
+const move=pick(['pass','pass','dribble','cross'],random);
+const moveText=move==='pass'?`${receiver.p.n}, ${p.n}’e pas verdi.`:move==='cross'?`${receiver.p.n} kanattan ortaladı; top ${p.n}’e gidiyor.`:`${p.n} topla rakip kaleye doğru ilerliyor.`;
+const moveScene=move==='dribble'?{type:move,team:t,from:p.n,targetY:Math.max(20,Math.min(80,40+random()*20))}:{type:move,team:t,from:receiver.p.n,to:p.n};
+add(m+"'",moveText,{mute:1,scene:moveScene});
 const pg=Math.min(.35,Math.max(.03,.14+(st[t].atk-st[o].def)*.008));
-if(Math.random()<pg){g[t]++;add(m+"'",`⚽ GOL! ${p.n} (${n}) ağlara gönderdi!`,{goal:1})}
-else{const dd=pick(S.L[o].slice(1)).p.n;
-add(m+"'",pick([`${p.n} şut çekti, ${S.L[o][0].p.n} son anda çıkardı!`,`${p.n} vuruşu auta gitti.`,`${p.n}'in şutu direkten döndü!`,`${dd} son anda araya girdi, tehlike geçti.`,`Korner kazandı ${n}, ama atak sonuçsuz kaldı.`,`🟨 ${dd} sert müdahale yaptı, sarı kart gördü.`]))}
-if(m===44)add("45'","⏸ Devre arası. Takımlar soyunma odasına gidiyor.",{sys:1})}
-add("90'","🏁 Hakem final düdüğünü çaldı.",{sys:1});
+if(random()<pg){g[t]++;add(m+"'",`⚽ GOL! ${p.n} (${n}) şutunu ağlara gönderdi!`,{goal:1,scene:{type:'goal',team:t,from:p.n,targetY:38+random()*24}})}
+else{
+const outcome=pick(['save','save','wide','post','block','tackle','corner','yellow'],random);let text,scene;
+if(outcome==='save'){const keeper=S.L[o][0].p,targetY=34+random()*32;text=`${p.n} şut çekti, ${keeper.n} kurtardı!`;scene={type:'save',team:t,from:p.n,defender:keeper.n,targetY,keeperY:targetY}}
+else if(outcome==='wide'){const targetY=random()<.5?7:93;text=`${p.n} vuruşu auta gitti.`;scene={type:'wide',team:t,from:p.n,targetY}}
+else if(outcome==='post'){const targetY=random()<.5?43:57;text=`${p.n}’in şutu direkten döndü!`;scene={type:'post',team:t,from:p.n,targetY}}
+else if(outcome==='corner'){const cornerY=random()<.5?8:92;text=`${p.n}’in şutu savunmaya çarpıp kornere çıktı.`;scene={type:'corner',team:t,from:p.n,cornerY}}
+else if(outcome==='yellow'){const cautioned=pick(S.L[o].slice(1),random).p;text=`🟨 ${cautioned.n} sert müdahaleden sonra sarı kart gördü.`;scene={type:'yellow',team:o,from:cautioned.n}}
+else{const defender=pick(S.L[o].slice(1),random).p;text=outcome==='block'?`${defender.n} şutun önüne geçti, topu engelledi.`:`${defender.n} araya girip atağı kesti.`;scene={type:outcome,team:t,from:p.n,defender:defender.n}}
+add(m+"'",text,{scene})}
+if(m===44)add("45'","⏸ Devre arası. Takımlar soyunma odasına gidiyor.",{sys:1,scene:{type:'halftime',team:0}})}
+add("90'","🏁 Hakem final düdüğünü çaldı.",{sys:1,scene:{type:'flow',team:0}});
 let pen=null;
 if(g[0]===g[1]){
 add("90'","🥅 Beraberlik! Seri penaltı atışlarına geçiliyor.",{sys:1});
 const sc=[0,0];let i=0,done=false;
 while(!done){
-for(const t of [0,1]){const ks=S.L[t].slice(1),p=ks[i%ks.length],ok=Math.random()<.76;if(ok)sc[t]++;
-add("PEN",`${p.n} (${S.names[t]}) penaltıyı ${ok?'gole çevirdi ✅':'kaçırdı ❌'} · ${sc[0]}-${sc[1]}`,{pen:[...sc]})}
+for(const t of [0,1]){const ks=S.L[t].slice(1),p=ks[i%ks.length].p,ok=random()<.76,targetY=ok?24+random()*52:(random()<.5?5:95),keeper=S.L[1-t][0].p,keeperY=targetY<50?70:30;if(ok)sc[t]++;
+add("PEN",`${p.n} (${S.names[t]}) penaltıyı ${ok?'gole çevirdi ✅':'kaçırdı ❌'} · ${sc[0]}-${sc[1]}`,{pen:[...sc],scene:{type:ok?'penalty-goal':'penalty-miss',team:t,from:p.n,keeper:keeper.n,targetY,keeperY}})}
 i++;if(i>=5&&sc[0]!==sc[1])done=true;
 if(i>=15){if(sc[0]===sc[1])sc[0]++;done=true}}
 pen=sc}
-return{T,g:[...g],pen}}
+return{T,g:[...g],pen,seed}}
 
 function play(){
 if(!['lineup','result'].includes(S.phase))return;
-commitState('start_match',()=>{S.L=[lineup(0),lineup(1)];S.match=simulate();S.phase='match'})}
+if(room?.seat===1){if(connection?.open){try{connection.send({type:'action',operation:'start_match',revision:roomRevision})}catch{scheduleGuestReconnect(roomPlayers[1]?.name||'Mavi Fırtına')}}else scheduleGuestReconnect(roomPlayers[1]?.name||'Mavi Fırtına');return}
+commitState('start_match',()=>{S.L=[lineup(0),lineup(1)];S.match=simulate(randomSeed());S.phase='match';matchEventIndex=0})}
 
 function showMatch(){
-clearInterval(timer);const r=S.match;if(!r)return;let i=0;
+clearTimeout(timer);const r=S.match;if(!r)return;S.sidesSwitched=false;
+matchPlayback={events:r.T,index:0};
 $('#app').innerHTML=`<h1>Maç</h1>
 <div class="panel"><div class="bar"><b style="color:${COL[0]}">${e(S.names[0])} <span class="mute">${S.form[0]}</span></b><b style="color:${COL[1]}">${e(S.names[1])} <span class="mute">${S.form[1]}</span></b></div>
 <div class="score"><span id="s0">0</span> - <span id="s1">0</span></div><div class="center mute" id="min">0'</div></div>
+<div class="panel" style="margin-top:12px"><div id="liveAction" aria-live="polite">Başlama vuruşu</div>${pitchHtml()}</div>
 <div class="panel" style="margin-top:12px"><div id="log"></div></div>
-<div class="center" style="margin-top:10px"><button class="ghost" id="skip">⏭ Atla</button></div>
+<div class="center" style="margin-top:10px">${room?.seat===0?'<button class="ghost" id="skip">⏭ Atla</button>':'<span class="mute">Maç host ile eşzamanlı oynatılıyor.</span>'}</div>
 <div id="end"></div>`;
-const log=$('#log');
-const step=()=>{
-if(!S||S.phase!=='match'||!$('#min')||!$('#s0')||!$('#s1')||!log.isConnected){clearInterval(timer);return false}
-if(i>=r.T.length){clearInterval(timer);fin(r);return false}
-const x=r.T[i++];
+const catchUp=Math.min(r.T.length,room?.seat===0?matchEventIndex:remoteMatchIndex);
+for(let index=0;index<catchUp;index++)playMatchEvent(index,false,true);
+if(room?.seat===0){scheduleMatchEvent();$('#skip').onclick=()=>{clearTimeout(timer);while(S?.phase==='match'&&playMatchEvent(matchPlayback?.index??0,true,true));}}
+}
+function scheduleMatchEvent(){
+const index=matchPlayback?.index??0,event=matchPlayback?.events[index];if(!event){playMatchEvent(index,true);return}
+const type=event.scene?.type,penalty=type==='penalty-goal'||type==='penalty-miss',shot=['goal','save','wide','post','block'].includes(type);
+const delay=penalty?1750:shot?1350:type==='halftime'?1450:type==='cross'?1000:type==='yellow'?1900:type==='corner'?1000:750;
+timer=setTimeout(()=>{if(playMatchEvent(index,true)&&S?.phase==='match')scheduleMatchEvent()},delay)}
+function playMatchEvent(index,publish,instant=false,startedAt=Date.now()){
+const playback=matchPlayback,log=$('#log');
+if(!S||S.phase!=='match'||!playback||!$('#min')||!$('#s0')||!$('#s1')||!log?.isConnected){clearInterval(timer);return false}
+if(index>=playback.events.length){if(publish){clearInterval(timer);fin(S.match)}return false}
+if(index!==playback.index)return false;
+const x=playback.events[index];playback.index++;if(publish)matchEventIndex=playback.index;else remoteMatchIndex=playback.index;
+const eventStartedAt=publish?Date.now():startedAt;
 $('#min').textContent=x.pen?`Penaltılar ${x.pen[0]}-${x.pen[1]}`:x.m;
-$('#s0').textContent=x.g[0];$('#s1').textContent=x.g[1];
-log.insertAdjacentHTML('beforeend',`<div class="${x.goal?'goal':''}${x.mute?' mt':''}${x.sys?' sys':''}">${x.pen?'':x.m+' — '}${e(x.txt)}</div>`);log.scrollTop=log.scrollHeight;return true};
-timer=setInterval(step,750);
-$('#skip').onclick=()=>{clearInterval(timer);while(step());}}
+const score=x.pen||x.g;$('#s0').textContent=score[0];$('#s1').textContent=score[1];
+showPitchEvent(x.scene,x.txt,index,instant,eventStartedAt);
+log.insertAdjacentHTML('beforeend',`<div class="${x.goal?'goal':''}${x.mute?' mt':''}${x.sys?' sys':''}">${x.pen?'':x.m+' — '}${e(x.txt)}</div>`);log.scrollTop=log.scrollHeight;
+if(publish)saveRoom();
+if(publish&&connection?.open)connection.send({type:'match-event',revision:roomRevision,index,startedAt:eventStartedAt,instant});
+return true}
 
 function fin(r){
 if(!S||S.phase!=='match')return;commitState('finish_match',()=>{S.phase='result'})}
