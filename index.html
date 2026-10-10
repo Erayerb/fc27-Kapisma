@@ -38,10 +38,15 @@ button.ghost{background:transparent;color:var(--text);border:1px solid var(--lin
 .line{margin:6px 0}.line .l{font-size:11px;color:var(--mute);text-transform:uppercase}
 .rules ol{margin:6px 0 0;padding-left:20px;font-size:14px}.rules li{margin:5px 0}
 .tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute);margin-left:6px}
+.home{max-width:620px;margin:8vh auto 0}.home h1{font-size:32px;margin-bottom:8px}.home .lead{font-size:15px;margin:0 0 28px}
+.home .panel{padding:22px;margin-bottom:12px}.home button{width:100%;min-height:48px}.home .join{display:flex;gap:8px;align-items:end}.home .join input{min-width:0;text-transform:uppercase;letter-spacing:2px;font-weight:700}.home .join button{width:auto;white-space:nowrap}
+.room-code{font-size:24px;font-weight:900;letter-spacing:4px}.notice{color:#b91c1c;font-size:14px;margin:8px 0}.status{min-height:24px}.rules summary{cursor:pointer;font-weight:700}
+@media(max-width:560px){.home{margin:3vh auto 0}.home h1{font-size:28px}.home .join{align-items:stretch;flex-direction:column}.home .join button{width:100%}}
 </style>
 </head>
 <body>
 <div id="app"></div>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script>
 // ⚠ Oyuncu verileri yaklaşık yer tutucudur; gerçek FC27 değerleriyle değiştirmek için bu listeyi düzenleyin.
 const DB=[
@@ -59,36 +64,79 @@ const FN={"2-1-1":"Dengeli","1-2-1":"Elmas","1-1-2":"Hücumcu","2-0-2":"Çift ka
 const IDX={DEF:0,MID:1,FWD:2};
 const $=s=>document.querySelector(s);
 const e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let S={},timer=null;
+let S=null,timer=null;
+let room=null,roomPlayers=[],roomRevision=0,peer=null,connection=null,committing=false;
+const ROOM_KEY='fc27-peer-room',ROOM_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function saveRoom(){if(room)localStorage.setItem(ROOM_KEY,JSON.stringify({code:room.code,seat:room.seat,players:roomPlayers,revision:roomRevision,state:room.seat===0?S:null}))}
+function randomCode(){let code='FC27-';for(let i=0;i<6;i++)code+=ROOM_ALPHABET[Math.floor(Math.random()*ROOM_ALPHABET.length)];return code}
+function createRoom(){if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openHost(randomCode())}
+function joinRoom(){const code=$('#roomCode').value.trim().toUpperCase();if(!/^FC27-[A-HJ-NP-Z2-9]{6}$/.test(code))return renderHome('Oda kodunu FC27-XXXXXX biçiminde gir.');if(typeof Peer==='undefined')return renderHome('PeerJS yüklenemedi. İnternet bağlantını kontrol edip yeniden dene.');openGuest(code)}
+function openHost(code,saved=null){
+peer=new Peer(code);peer.on('open',id=>{room={code:id,seat:0};roomPlayers=saved?.players||[{name:'Kırmızı Şimşekler'},null];roomRevision=saved?.revision||0;S=saved?.state||null;saveRoom();renderCurrent()});
+peer.on('connection',conn=>{if(connection?.open){conn.close();return}connection=conn;conn.on('data',message=>handleHostMessage(conn,message));conn.on('open',()=>{roomPlayers[1]=roomPlayers[1]||{name:'Mavi Fırtına'};sendSnapshot();renderLobby()});conn.on('close',()=>{if(connection===conn){connection=null;roomPlayers[1]=null;saveRoom();if(!S?.phase)renderLobby()}})});
+peer.on('error',error=>{if(error.type==='unavailable-id'){peer.destroy();peer=null;room=null;renderHome('Bu oda kodu kullanımda. Yeniden oda oluştur.')}else if(error.type!=='disconnected')showConnectionError(error.message)})}
+function openGuest(code,savedName='Mavi Fırtına'){
+peer=new Peer();peer.on('open',()=>{room={code,seat:1};roomPlayers=[null,{name:savedName}];roomRevision=0;S=null;connection=peer.connect(code,{reliable:true});
+connection.on('open',()=>connection.send({type:'join',name:savedName}));connection.on('data',handlePeerMessage);connection.on('close',()=>showConnectionError('Oda sahibiyle bağlantı kesildi. Yeniden bağlanmak için odaya tekrar katıl.'));connection.on('error',error=>showConnectionError(error.message))});
+peer.on('error',error=>{if(error.type==='peer-unavailable'){peer.destroy();peer=null;room=null;renderHome('Oda bulunamadı. Oda kodunu kontrol et ve hostun bağlı kaldığından emin ol.')}else if(error.type!=='disconnected')showConnectionError(error.message)})}
+function resumeRoom(){let saved;try{saved=JSON.parse(localStorage.getItem(ROOM_KEY)||'null')}catch{return}if(!saved||typeof Peer==='undefined')return;if(saved.seat===0)openHost(saved.code,saved);else openGuest(saved.code,saved.players?.[1]?.name||'Mavi Fırtına')}
+function handleHostMessage(conn,message){if(!message||typeof message!=='object')return;
+if(message.type==='join'||message.type==='rename'){roomPlayers[1]={name:cleanTeamName(message.name,'Mavi Fırtına')};roomRevision++;saveRoom();sendSnapshot();if(!S?.phase)renderLobby();return}
+if(message.type==='action'){
+if(message.revision!==roomRevision||!applyPeerAction(message)){conn.send({type:'error',message:'Hamle kabul edilmedi; oyun durumu yenilendi.'});sendSnapshot();return}
+roomRevision++;saveRoom();sendSnapshot();renderCurrent()}}
+function handlePeerMessage(message){if(!message||typeof message!=='object')return;
+if(message.type==='snapshot'){const wasLobby=!S?.phase;roomPlayers=message.players;roomRevision=message.revision;S=message.state;committing=false;saveRoom();renderCurrent();if(wasLobby&&!roomPlayers[0])showConnectionError('Oda sahibi çevrimdışı.');return}
+if(message.type==='error'){committing=false;showConnectionError(message.message)}}
+function sendSnapshot(){if(!room)return;saveRoom();if(connection?.open)connection.send({type:'snapshot',state:S,revision:roomRevision,players:roomPlayers})}
+function validAction(seat,operation,next,team){
+if(operation==='initialize')return seat===0&&S===null&&next?.phase==='auction'&&roomPlayers[1]!==null;
+if(operation==='reset')return seat===0&&S!==null&&next===null;
+if(!S||!next)return false;const phase=S.phase;
+if(operation==='bid'||operation==='pass')return phase==='auction'&&S.cur?.turn===seat&&(operation!=='pass'||S.cur.leader!==null)&&['auction','lineup'].includes(next.phase);
+if(operation==='formation')return phase==='lineup'&&team===seat&&next.phase==='lineup';
+if(operation==='start_match')return ['lineup','result'].includes(phase)&&next.phase==='match';
+if(operation==='finish_match')return phase==='match'&&next.phase==='result';return false}
+function applyPeerAction(message){const seat=1,operation=message.operation;
+if(operation==='bid'){const amount=Number(message.amount);if(S.phase!=='auction'||S.cur?.turn!==seat||!Number.isInteger(amount)||!amts().includes(amount)||!canBid(seat,amount))return false;const c=S.cur;c.bid=amount;c.leader=seat;c.turn=1-seat;S.msg=`${S.names[seat]} ${amount}M teklif verdi`;if(!canBid(c.turn,amts()[0])){S.msg+=` · ${S.names[c.turn]} artıramıyor`;win(c.leader)}else render();return true}
+if(operation==='pass'){if(S.phase!=='auction'||S.cur?.turn!==seat||S.cur.leader===null)return false;win(S.cur.leader);return true}
+if(operation==='formation'){if(S.phase!=='lineup'||message.team!==seat||!FORMS.includes(message.value))return false;S.form[seat]=message.value;lineupPage();return true}
+if(operation==='start_match'){if(!['lineup','result'].includes(S.phase))return false;S.L=[lineup(0),lineup(1)];S.match=simulate();S.phase='match';showMatch();return true}
+if(operation==='finish_match'){if(S.phase!=='match')return false;S.phase='result';renderResult();return true}return false}
+function showConnectionError(message){let notice=$('#notice');if(!notice){notice=document.createElement('p');notice.className='notice';$('#app').prepend(notice)}notice.textContent=message}
+function cleanTeamName(name,fallback){const clean=String(name||'').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,20);return clean||fallback}
+function commitState(operation,mutate,extra={}){if(committing||!room)return;committing=true;const previous=S;let candidate;
+try{S=structuredClone(S);mutate();candidate=S;S=previous}catch(error){S=previous;committing=false;throw error}
+if(room.seat===0){if(!validAction(0,operation,candidate,extra.team)){committing=false;showConnectionError('Bu hamle şu anda geçerli değil.');return}S=candidate;roomRevision++;committing=false;sendSnapshot();renderCurrent();return}
+if(!connection?.open){committing=false;showConnectionError('Host ile bağlantı yok.');return}
+connection.send({type:'action',operation,revision:roomRevision,...extra})}
+function renderCurrent(){if(!room)return;if(!S?.phase){clearInterval(timer);renderLobby();return}if(S.phase==='auction')render();else if(S.phase==='lineup')lineupPage();else if(S.phase==='match')showMatch();else if(S.phase==='result')renderResult()}
 
 function cardHtml(p){const c=p.o>=88?'':p.o>=84?'s':'br';
 return `<div class="card ${c}"><div class="o">${p.o}</div><div class="p">${p.pos}</div><div class="n">${e(p.n)}</div></div>`}
 const mini=p=>`<span class="mini"><b>${p.o}</b>${p.pos} ${e(p.n)} <span class="mute">${p.paid}M</span></span>`;
 
-/* ---------- Giriş ---------- */
-function setup(){
-clearInterval(timer);
-$('#app').innerHTML=`<h1>⚽ FC27 Kapışma</h1><p class="mute">İki takım, bütçe, açık artırma ve final maçı. Aynı cihazda sırayla oynanır.</p>
-<div class="panel rules" style="margin-bottom:12px"><h2>📜 Oyun Kuralları</h2><ol>
-<li><b>Kadro:</b> Her takım tam <b>5 oyuncu</b> almak zorundadır: <b>1 kaleci (zorunlu)</b> + 4 saha oyuncusu. Saha oyuncularının mevkisi serbesttir (hepsi forvet de olabilir).</li>
-<li><b>Sırayla açılış:</b> Oyuncular tek tek açılır, açılış sırası takımlar arasında dönüşümlüdür. Oyuncuyu açan takım <b>teklif vermek zorundadır</b> (en az başlangıç fiyatı), pas geçemez.</li>
-<li><b>Karşı hamle:</b> Sıra rakibe geçince rakip teklifi <b>artırabilir ya da pas geçebilir</b>. Pas geçen taraf oyuncuyu kaybeder; oyuncu son teklifi verene gider. Oyuncu satılmadan kalmaz.</li>
-<li><b>Bütçe ve fiyatlar:</b> Varsayılan bütçe 100M. Başlangıç fiyatları: güçlü oyuncular 20M, ortalama oyuncular 10M, diğerleri 5M. Teklifler +1 / +2 / +5 / +10 adımlarıyla artar. Boş slot kalmaması için kalan her slota en az 5M (kaleciniz yoksa en ucuz kaleci fiyatı) rezerv ayrılır, bu rezervi aşan teklif veremezsiniz. Kaleciniz varsa başka kaleciye, saha kadronuz dolduysa saha oyuncusuna teklif veremezsiniz. Yine de boş slot kalırsa açık artırma sırayla baştan yapılır.</li>
-<li><b>Formasyon:</b> Açık artırma bitince her takım formasyonunu seçer (DEF-OS-FWD). Oyuncular en uygun hatta otomatik yerleşir. Mevkisi dışında oynayan oyuncunun gücü düşer (komşu hat -5, uzak hat -10).</li>
-<li><b>Maç:</b> Kadro ve formasyon gücüne göre dakika dakika 90 dakikalık simülasyon oynanır (devre arası dahil, istersen atlayabilirsin). Beraberlikte seri penaltı atışları yapılır.</li></ol></div>
-<div class="row">
-<div class="panel team" style="--c:${COL[0]}"><h2>Takım 1</h2><label>Takım adı</label><input id="n0" value="Kırmızı Şimşekler" maxlength="20"></div>
-<div class="panel team" style="--c:${COL[1]}"><h2>Takım 2</h2><label>Takım adı</label><input id="n1" value="Mavi Fırtına" maxlength="20"></div>
-</div>
-<div class="panel" style="margin-top:12px"><label>Başlangıç bütçesi (milyon)</label><input id="bud" type="number" value="100" min="30" max="1000">
-<p class="mute">Başlangıç fiyatları: güçlü oyuncular 20M, ortalama oyuncular 10M, diğerleri 5M.</p>
-<button onclick="start()">Açık Artırmayı Başlat</button></div>`}
-
+/* ---------- Oda girişi ---------- */
+function renderHome(message=''){
+clearInterval(timer);$('#app').innerHTML=`<main class="home"><h1>⚽ FC27 KAPIŞMA</h1><p class="mute lead">İki takım. Tek oda. Kapışma başlasın.</p>
+<div class="panel"><button onclick="createRoom()">Oda Oluştur</button></div>
+<div class="panel"><h2>Odaya Katıl</h2><label for="roomCode">Oda kodu</label><div class="join"><input id="roomCode" maxlength="11" autocomplete="off" placeholder="FC27-ABC123"><button onclick="joinRoom()">Katıl</button></div>${message?`<p class="notice">${e(message)}</p>`:''}</div></main>`}
+function setup(){renderHome()}
+function renderLobby(){
+const host=room.seat===0,ready=roomPlayers[0]&&roomPlayers[1];
+$('#app').innerHTML=`<main class="home"><div class="bar"><h1>Oda Lobisi</h1><button class="ghost" onclick="leaveRoom()">Çık</button></div>
+<div class="panel center"><div class="mute">Arkadaşınla bu kodu paylaş</div><div class="room-code">${e(room.code)}</div><p class="status mute">${ready?'İki oyuncu hazır':'İkinci oyuncu bekleniyor…'}</p></div>
+<div class="row"><div class="panel team" style="--c:${COL[0]}"><h2>Takım 1 ${room.seat===0?'· Sen':''}</h2><label>Takım adı</label><input value="${e(roomPlayers[0]?.name||'Kırmızı Şimşekler')}" maxlength="20" onchange="renameTeam(this.value)"></div>
+<div class="panel team" style="--c:${COL[1]}"><h2>Takım 2 ${room.seat===1?'· Sen':''}</h2><label>Takım adı</label><input value="${e(roomPlayers[1]?.name||'Mavi Fırtına')}" maxlength="20" ${room.seat===1?'':'disabled'} onchange="renameTeam(this.value)"></div></div>
+${host?`<div class="panel"><label>Başlangıç bütçesi (milyon)</label><input id="bud" type="number" value="100" min="30" max="1000"><p class="mute">Güçlü oyuncular 20M, ortalama oyuncular 10M, diğerleri 5M.</p><button ${ready?'':'disabled'} onclick="start()">Açık Artırmayı Başlat</button></div>`:`<div class="panel center"><p class="mute">Oda sahibi oyunu başlattığında açık artırma başlayacak.</p></div>`}
+<details class="panel rules"><summary>Oyun kuralları</summary><ol><li>Her takım 5 oyuncu alır: 1 kaleci ve 4 saha oyuncusu.</li><li>Oyuncu açılışında ilk teklif zorunludur. Sıra rakibe geçince teklif artırılabilir veya pas geçilebilir.</li><li>Teklifler bütçeye ve boş kadro slotlarına göre sınırlandırılır; kaleci zorunludur.</li><li>Açık artırma bitince her takım DEF-OS-FWD formasyonunu seçer.</li><li>Maç 90 dakika simüle edilir; beraberlikte seri penaltı atışları yapılır.</li></ol></details><p id="notice" class="notice"></p></main>`}
+function renameTeam(name){const clean=cleanTeamName(name,room.seat?'Mavi Fırtına':'Kırmızı Şimşekler');if(room.seat===0){roomPlayers[0]={name:clean};roomRevision++;sendSnapshot()}else if(connection?.open)connection.send({type:'rename',name:clean})}
+function leaveRoom(){clearInterval(timer);connection?.close();peer?.destroy();connection=null;peer=null;localStorage.removeItem(ROOM_KEY);room=null;roomPlayers=[];S=null;renderHome()}
 function start(){
-const b=Math.max(30,+$('#bud').value||100);
-S={B:b,names:[$('#n0').value.trim()||'Takım 1',$('#n1').value.trim()||'Takım 2'],bud:[b,b],sq:[[],[]],
-queue:DB.map(x=>({...x})).sort(()=>Math.random()-.5),nom:Math.floor(Math.random()*2),cur:null,msg:'',form:['2-1-1','2-1-1']};
-next()}
+if(room.seat!==0||!roomPlayers[1])return;
+const b=Math.max(30,Math.min(1000,+$('#bud').value||100));
+commitState('initialize',()=>{S={B:b,names:roomPlayers.map((player,index)=>player?.name||(index?'Takım 2':'Takım 1')),bud:[b,b],sq:[[],[]],
+queue:DB.map(x=>({...x})).sort(()=>Math.random()-.5),nom:Math.floor(Math.random()*2),cur:null,msg:'',form:['2-1-1','2-1-1'],phase:'auction'};next()})}
 
 /* ---------- Açık artırma ---------- */
 const left=t=>SIZE-S.sq[t].length;
@@ -106,11 +154,10 @@ const i=S.queue.findIndex(p=>need(o,p.pos)&&canBid(o,p.base,p));
 if(i>=0){const p=S.queue.splice(i,1)[0];S.cur={p,bid:0,leader:null,turn:o,opener:o};S.nom=1-o;return render()}}
 finish()}
 
-function bid(amt){const c=S.cur,t=c.turn;if(!canBid(t,amt))return;
-c.bid=amt;c.leader=t;c.turn=1-t;S.msg=`${S.names[t]} ${amt}M teklif verdi`;
-if(!canBid(c.turn,amts()[0])){S.msg+=` · ${S.names[c.turn]} artıramıyor`;return win(c.leader)}
-render()}
-function pass(){const c=S.cur;if(c.leader===null)return;win(c.leader)}
+function bid(amt){const c=S.cur,t=c.turn;if(t!==room.seat||!canBid(t,amt))return;
+commitState('bid',()=>{const c=S.cur,t=c.turn;c.bid=amt;c.leader=t;c.turn=1-t;S.msg=`${S.names[t]} ${amt}M teklif verdi`;
+if(!canBid(c.turn,amts()[0])){S.msg+=` · ${S.names[c.turn]} artıramıyor`;return win(c.leader)}render()},{amount:amt})}
+function pass(){const c=S.cur;if(c.turn!==room.seat||c.leader===null)return;commitState('pass',()=>win(S.cur.leader))}
 function win(t){const c=S.cur;S.bud[t]-=c.bid;S.sq[t].push({...c.p,paid:c.bid});
 S.msg=`✅ ${c.p.n} → ${S.names[t]} (${c.bid}M)`;next()}
 
@@ -120,14 +167,16 @@ return `<div class="panel team ${on?'on':''}" style="--c:${COL[t]}"><div class="
 <div class="big">${S.bud[t]}M</div>${squadHtml(t)}</div>`}
 
 function render(){
+if(committing)return;
 const c=S.cur,t=c.turn,forced=c.leader===null,mx=Math.max(0,S.bud[t]-reserveFor(t,c.p));
-const btns=amts().map(a=>`<button ${canBid(t,a)?'':'disabled'} onclick="bid(${a})">${a}M</button>`).join('');
+const canAct=t===room.seat&&!committing;
+const btns=amts().map(a=>`<button ${canAct&&canBid(t,a)?'':'disabled'} onclick="bid(${a})">${a}M</button>`).join('');
 $('#app').innerHTML=`<div class="bar"><h1>⚽ Açık Artırma</h1><span class="mute">Kalan oyuncu: ${S.queue.length}</span></div>
 <div class="panel center"><div class="mute">${e(S.msg||'Yeni oyuncu açıldı')}</div>${cardHtml(c.p)}
 <p style="margin:10px 0 0">Başlangıç: <b>${c.p.base}M</b> · Güncel teklif: <b>${c.bid?c.bid+'M':'—'}</b>${c.leader!==null?` (${e(S.names[c.leader])})`:''}</p>
 <p style="color:${COL[t]};font-weight:700;margin:6px 0 0">Sıra: ${e(S.names[t])}</p>
 <p class="mute" style="margin:0">${forced?'Açılış teklifi zorunlu, pas geçilemez.':'Teklifi artırabilir ya da pas geçebilirsin.'} En fazla teklif: <b>${mx}M</b></p>
-<div class="bids">${btns}<button class="ghost" ${forced?'disabled':''} onclick="pass()">Pas</button></div></div>
+<div class="bids">${btns}<button class="ghost" ${forced||!canAct?'disabled':''} onclick="pass()">Pas</button></div>${t===room.seat?'':`<p class="mute">Karşı takımın hamlesi bekleniyor.</p>`}</div>
 <div class="row" style="margin-top:12px">${teamPanel(0)}${teamPanel(1)}</div>`}
 
 /* ---------- Formasyon ---------- */
@@ -153,16 +202,17 @@ return a.length?`<div class="line"><div class="l">${s}</div>${a.map(x=>`<span cl
 
 function finish(){
 if(left(0)>0||left(1)>0){S.sq=[[],[]];S.bud=[S.B,S.B];S.queue=DB.map(x=>({...x})).sort(()=>Math.random()-.5);
-S.msg='⚠ Boş slot kaldı, açık artırma sırayla baştan yapılıyor.';return next()}
-S.cur=null;lineupPage()}
-function setForm(t,v){S.form[t]=v;lineupPage()}
+S.msg='⚠ Boş slot kaldı, açık artırma sırayla baştan yapılıyor.';S.phase='auction';return next()}
+S.cur=null;S.phase='lineup';lineupPage()}
+function setForm(t,v){if(t!==room.seat)return;commitState('formation',()=>{S.form[t]=v;lineupPage()},{team:t,value:v})}
 function lineupPage(){
+if(committing)return;
 const pn=t=>{const L=lineup(t);return `<div class="panel team" style="--c:${COL[t]}"><div class="bar"><h2>${e(S.names[t])}</h2><span class="mute">Kalan bütçe: ${S.bud[t]}M</span></div>
-<label>Formasyon (DEF-OS-FWD)</label><select onchange="setForm(${t},this.value)">${FORMS.map(f=>`<option value="${f}" ${S.form[t]===f?'selected':''}>${f} · ${FN[f]}</option>`).join('')}</select>
+<label>Formasyon (DEF-OS-FWD) · ${t===room.seat?'Sen':'Rakip'}</label><select ${t===room.seat?'':'disabled'} onchange="setForm(${t},this.value)">${FORMS.map(f=>`<option value="${f}" ${S.form[t]===f?'selected':''}>${f} · ${FN[f]}</option>`).join('')}</select>
 ${lineHtml(L)}<p class="mute" style="margin:8px 0 0">Takım gücü: <b>${power(L)}</b></p></div>`};
 $('#app').innerHTML=`<h1>Formasyon Seç</h1><p class="mute">Açık artırma bitti. Formasyonu değiştirdikçe oyuncular en uygun hatta yeniden dizilir.</p>
 <div class="row">${pn(0)}${pn(1)}</div>
-<div class="panel" style="margin-top:12px;text-align:center"><button onclick="play()">⚔ Maçı Başlat</button> <button class="ghost" onclick="setup()">Yeniden Kur</button></div>`}
+<div class="panel" style="margin-top:12px;text-align:center"><button onclick="play()">⚔ Maçı Başlat</button> ${room.seat===0?'<button class="ghost" onclick="resetGame()">Yeniden Kur</button>':''}</div>`}
 
 /* ---------- Maç ---------- */
 const pick=a=>a[Math.floor(Math.random()*a.length)];
@@ -195,8 +245,11 @@ pen=sc}
 return{T,g:[...g],pen}}
 
 function play(){
-S.L=[lineup(0),lineup(1)];
-const r=simulate();let i=0;
+if(!['lineup','result'].includes(S.phase))return;
+commitState('start_match',()=>{S.L=[lineup(0),lineup(1)];S.match=simulate();S.phase='match'})}
+
+function showMatch(){
+clearInterval(timer);const r=S.match;if(!r)return;let i=0;
 $('#app').innerHTML=`<h1>Maç</h1>
 <div class="panel"><div class="bar"><b style="color:${COL[0]}">${e(S.names[0])} <span class="mute">${S.form[0]}</span></b><b style="color:${COL[1]}">${e(S.names[1])} <span class="mute">${S.form[1]}</span></b></div>
 <div class="score"><span id="s0">0</span> - <span id="s1">0</span></div><div class="center mute" id="min">0'</div></div>
@@ -205,6 +258,7 @@ $('#app').innerHTML=`<h1>Maç</h1>
 <div id="end"></div>`;
 const log=$('#log');
 const step=()=>{
+if(!S||S.phase!=='match'||!$('#min')||!$('#s0')||!$('#s1')||!log.isConnected){clearInterval(timer);return false}
 if(i>=r.T.length){clearInterval(timer);fin(r);return false}
 const x=r.T[i++];
 $('#min').textContent=x.pen?`Penaltılar ${x.pen[0]}-${x.pen[1]}`:x.m;
@@ -214,16 +268,15 @@ timer=setInterval(step,750);
 $('#skip').onclick=()=>{clearInterval(timer);while(step());}}
 
 function fin(r){
-const sk=$('#skip');if(sk)sk.remove();
-let w=r.g[0]>r.g[1]?0:r.g[1]>r.g[0]?1:null,txt='';
-if(w===null){w=r.pen[0]>r.pen[1]?0:1;txt=` · Penaltılar: ${r.pen[0]}-${r.pen[1]}`}
-$('#log').insertAdjacentHTML('beforeend',`<div><b>Final skoru ${r.g[0]}-${r.g[1]}${txt}</b></div>`);
-$('#log').scrollTop=1e5;
-$('#end').innerHTML=`<div class="panel center" style="margin-top:12px;border-color:${COL[w]}"><div class="big">🏆 ${e(S.names[w])} kazandı!</div>
-<p class="mute">Takım gücü: ${e(S.names[0])} ${power(S.L[0])} · ${e(S.names[1])} ${power(S.L[1])}</p>
-<button onclick="play()">Rövanş</button> <button class="ghost" onclick="lineupPage()">Formasyonu Değiştir</button> <button class="ghost" onclick="setup()">Yeni Oyun</button></div>`}
+if(!S||S.phase!=='match')return;commitState('finish_match',()=>{S.phase='result'})}
+function renderResult(){
+const r=S.match;if(!r)return;let winner=r.g[0]>r.g[1]?0:r.g[1]>r.g[0]?1:null;
+if(winner===null)winner=r.pen[0]>r.pen[1]?0:1;
+const log=r.T.map(x=>`<div class="${x.goal?'goal':''}${x.mute?' mt':''}${x.sys?' sys':''}">${x.pen?'':x.m+' — '}${e(x.txt)}</div>`).join('');
+$('#app').innerHTML=`<h1>Maç Sonucu</h1><div class="panel center"><div class="bar"><b style="color:${COL[0]}">${e(S.names[0])}</b><b style="color:${COL[1]}">${e(S.names[1])}</b></div><div class="score">${r.g[0]} - ${r.g[1]}</div>${r.pen?`<p class="mute">Penaltılar ${r.pen[0]} - ${r.pen[1]}</p>`:''}<div class="big">🏆 ${e(S.names[winner])} kazandı</div><p class="mute">Takım gücü: ${power(S.L[0])} · ${power(S.L[1])}</p><button onclick="play()">Rövanş</button> ${room.seat===0?'<button class="ghost" onclick="resetGame()">Yeni Oyun</button>':''}</div><div class="panel" style="margin-top:12px"><div id="log">${log}</div></div>`}
+function resetGame(){if(room.seat!==0)return;commitState('reset',()=>{S=null})}
 
-setup();
+setup();resumeRoom();
 </script>
 </body>
 </html>
